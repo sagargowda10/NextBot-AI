@@ -1,0 +1,81 @@
+"""Embedding providers.
+
+`HashingEmbedder` is a deterministic, dependency-free embedding (signed feature hashing of
+stemmed unigrams + bigrams, L2-normalised). It is not a neural model, but it gives real vector
+similarity search for demo mode and tests. `OpenAIEmbedder` uses text-embedding-3-small with the
+`dimensions` parameter so both providers produce vectors of the same size for pgvector.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import math
+import re
+from typing import Protocol
+
+_STOP = frozenset(
+    "a an and are as at be by can do does for from have how i in is it me my of on or our "
+    "the this to was what when where which who will with you your we us".split()
+)
+_TOKEN = re.compile(r"[a-z0-9₹]+")
+
+
+def _stem(tok: str) -> str:
+    for suf in ("ing", "ies", "ed", "es", "s"):
+        if len(tok) > len(suf) + 2 and tok.endswith(suf):
+            return tok[: -len(suf)] + ("y" if suf == "ies" else "")
+    return tok
+
+
+def tokenize(text: str) -> list[str]:
+    return [_stem(t) for t in _TOKEN.findall(text.lower()) if t not in _STOP]
+
+
+class Embedder(Protocol):
+    dim: int
+    name: str
+
+    async def embed(self, texts: list[str]) -> list[list[float]]: ...
+
+
+class HashingEmbedder:
+    name = "hashing-v1"
+
+    def __init__(self, dim: int = 384) -> None:
+        self.dim = dim
+
+    def _vec(self, text: str) -> list[float]:
+        v = [0.0] * self.dim
+        toks = tokenize(text)
+        feats = toks + [f"{a}_{b}" for a, b in zip(toks, toks[1:], strict=False)]
+        for f in feats:
+            h = hashlib.blake2b(f.encode(), digest_size=8).digest()
+            idx = int.from_bytes(h[:4], "little") % self.dim
+            sign = 1.0 if h[4] & 1 else -1.0
+            v[idx] += sign * (1.5 if "_" in f else 1.0)
+        norm = math.sqrt(sum(x * x for x in v)) or 1.0
+        return [x / norm for x in v]
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        return [self._vec(t) for t in texts]
+
+
+class OpenAIEmbedder:
+    name = "openai"
+
+    def __init__(self, api_key: str, model: str, dim: int = 384) -> None:
+        from openai import AsyncOpenAI
+
+        self.client = AsyncOpenAI(api_key=api_key, timeout=20)
+        self.model, self.dim = model, dim
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        resp = await self.client.embeddings.create(model=self.model, input=texts, dimensions=self.dim)
+        return [d.embedding for d in resp.data]
+
+
+def cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    na = math.sqrt(sum(x * x for x in a)) or 1.0
+    nb = math.sqrt(sum(y * y for y in b)) or 1.0
+    return dot / (na * nb)

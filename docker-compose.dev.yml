@@ -1,0 +1,26 @@
+# Lightweight setup: backend on SQLite with in-memory cache and event bus + frontend. No other services.
+#   docker compose -f docker-compose.dev.yml up --build
+name: nextbot-dev
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      ENVIRONMENT: local
+      DEMO_MODE: "true"
+      AI_PROVIDER: mock
+      PAYMENT_PROVIDER: mock
+      DATABASE_URL: sqlite+aiosqlite:////data/nextbot.db
+      EVENT_BUS: memory
+      JWT_SECRET: local-dev-only-secret-change-me-0123456789
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    volumes: [sqlitedata:/data]
+    user: "0:0"  # writable volume for the SQLite file
+    ports: ["8000:8000"]
+
+  frontend:
+    build: { context: ./frontend, args: { NEXT_PUBLIC_API_URL: "http://localhost:8000" } }
+    ports: ["3000:3000"]
+    depends_on: [backend]
+
+volumes: { sqlitedata: {} }

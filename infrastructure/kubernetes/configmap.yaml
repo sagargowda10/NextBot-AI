@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nextbot-config
+  namespace: nextbot
+data:
+  ENVIRONMENT: production
+  DEMO_MODE: "false"
+  AI_PROVIDER: openai
+  PAYMENT_PROVIDER: razorpay
+  SHIPPING_PROVIDER: mock
+  WHATSAPP_ENABLED: "false"
+  EMAIL_ENABLED: "true"
+  SEED_ON_STARTUP: "false"
+  EVENT_BUS: kafka
+  KAFKA_BOOTSTRAP_SERVERS: "b-1.nextbot-msk.example.amazonaws.com:9092"
+  SEARCH_BACKEND: database
+  LOG_LEVEL: INFO
+  CORS_ORIGINS: '["https://shop.example.com"]'
+  MCP_ALLOWED_HOSTS: '["api.example.com"]'
+  OTEL_ENABLED: "true"
+  OTEL_EXPORTER_ENDPOINT: "http://otel-collector.observability:4318/v1/traces"

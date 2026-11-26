@@ -1,0 +1,36 @@
+[project]
+name = "nextbot-backend"
+version = "1.0.0"
+description = "NextBot AI — autonomous omnichannel e-commerce agent platform (FastAPI backend)"
+requires-python = ">=3.12"
+
+[project.entry-points."nextbot.plugins"]
+# Third-party trusted plugins register here, e.g.:
+# loyalty = "nextbot_loyalty.plugin:LoyaltyPlugin"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: needs FastAPI + SQLAlchemy + aiosqlite (requirements.txt)",
+    "containers: needs Docker for Testcontainers (PostgreSQL/pgvector)",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC"]
+ignore = ["S101", "S105", "S106", "B008", "UP046"]  # asserts in tests, demo passwords in seed, FastAPI Depends defaults, Generic[T] kept for pydantic/mypy compatibility
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = true
+warn_unused_ignores = false
+disallow_untyped_defs = false
+check_untyped_defs = true

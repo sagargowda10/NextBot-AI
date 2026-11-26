@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push: { branches: [main] }
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements*.txt }
+      - run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check app tests
+      - name: Type-check
+        run: mypy app
+      - name: Unit tests (agents, plugins, RAG, MCP, events, domain)
+        run: pytest tests/unit -q
+      - name: API integration tests (FastAPI + SQLAlchemy + SQLite) and PostgreSQL concurrency (Testcontainers)
+        run: pytest tests/integration -q -rs
+      - name: Migrations apply cleanly
+        env: { DATABASE_URL: "sqlite+aiosqlite:///./ci.db" }
+        run: alembic upgrade head
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+
+  e2e:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f docker-compose.dev.yml up -d --build
+      - run: |
+          for i in $(seq 1 60); do curl -sf http://localhost:8000/health/ready && break; sleep 3; done
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - working-directory: frontend
+        run: npm install && npx playwright install --with-deps chromium && E2E_NO_SERVER=1 npx playwright test
+      - if: always()
+        run: docker compose -f docker-compose.dev.yml logs backend | tail -200
+
+  images:
+    if: github.ref == 'refs/heads/main'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - uses: docker/build-push-action@v6
+        with: { context: backend, push: true, tags: "ghcr.io/${{ github.repository_owner }}/nextbot-backend:${{ github.sha }}" }
+      - uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: true
+          build-args: NEXT_PUBLIC_API_URL=${{ vars.API_URL || 'https://api.example.com' }}
+          tags: "ghcr.io/${{ github.repository_owner }}/nextbot-frontend:${{ github.sha }}"
