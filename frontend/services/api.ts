@@ -2,7 +2,10 @@
 
 import type { TokenPair } from "@/types";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Empty = same origin: the browser calls /api/... on the frontend's own address and Next.js proxies it to the backend
+// (see next.config.mjs). Works on localhost, a phone on the LAN, a tunnel URL or a real domain. Set NEXT_PUBLIC_API_URL
+// only to call a backend on another domain directly.
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 const ACCESS = "nb_access";
 const REFRESH = "nb_refresh";
 
