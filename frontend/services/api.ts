@@ -5,7 +5,14 @@ import type { TokenPair } from "@/types";
 // Empty = same origin: the browser calls /api/... on the frontend's own address and Next.js proxies it to the backend
 // (see next.config.mjs). Works on localhost, a phone on the LAN, a tunnel URL or a real domain. Set NEXT_PUBLIC_API_URL
 // only to call a backend on another domain directly.
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const CONFIGURED_API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const LOCAL = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/;
+// Safety net: a build that baked in http://localhost:8000 must still work when the site is opened from a phone, a tunnel
+// or a real domain - there "localhost" is the visitor's own device, so fall back to the same-origin proxy.
+export const API_URL =
+  typeof window !== "undefined" && LOCAL.test(CONFIGURED_API_URL) && !["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ? ""
+    : CONFIGURED_API_URL;
 const ACCESS = "nb_access";
 const REFRESH = "nb_refresh";
 

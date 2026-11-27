@@ -49,7 +49,10 @@ export default function AdminOrdersPage() {
           <Table head={["Order", "Placed", "Customer", "Total", "Payment", "Status", "Courier actions"]}>
             {data.items.map((o) => (
               <tr key={o.id}>
-                <Td><Link href={`/orders/${o.id}`} className="font-medium text-brand-600 hover:underline">{o.order_number}</Link></Td>
+                <Td>
+                  <Link href={`/orders/${o.id}`} className="font-medium text-brand-600 hover:underline">{o.order_number}</Link>
+                  <Link href={`/admin/workflows?order=${o.id}`} className="ml-2 text-xs text-ink-500 hover:text-brand-600 hover:underline">workflow ↗</Link>
+                </Td>
                 <Td>{when(o.created_at)}</Td>
                 <Td>#{o.user_id}</Td>
                 <Td>{inr(o.total)}</Td>

@@ -7,8 +7,9 @@ const nextConfig = {
   // backend. Works from a phone, another laptop or a public URL without hard-coding hosts or touching CORS.
   // Enabled unless NEXT_PUBLIC_API_URL is set. Backend = BACKEND_INTERNAL_URL (Docker: http://backend:8000),
   // or http://localhost:8000 for `npm run dev` on the host.
+  // AI answers (web search) can take longer than the 30 s default proxy timeout
+  experimental: { proxyTimeout: 90_000 },
   async rewrites() {
-    if (process.env.NEXT_PUBLIC_API_URL) return [];
     const backend = process.env.BACKEND_INTERNAL_URL || "http://localhost:8000";
     return [
       { source: "/api/:path*", destination: `${backend}/api/:path*` },

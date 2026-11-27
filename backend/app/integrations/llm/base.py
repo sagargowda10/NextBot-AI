@@ -19,3 +19,6 @@ class LLMProvider(Protocol):
 
     async def grounded_answer(self, question: str, contexts: list[dict[str, Any]]) -> str | None:
         """Answer strictly from retrieved contexts. None → use the extractive fallback."""
+
+    async def general_answer(self, question: str, history: list[dict[str, str]]) -> str | None:
+        """Answer a general (non-store) question from model knowledge. None → not available (mock)."""

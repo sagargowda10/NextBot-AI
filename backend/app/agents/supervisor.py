@@ -78,6 +78,7 @@ PLANS: dict[str, list[PlanStep]] = {
     ],
     "return_status": [PlanStep("return_refund", "return_status")],
     "faq": [PlanStep("customer_support", "faq")],
+    "general": [PlanStep("customer_support", "general")],
     "unknown": [PlanStep("customer_support", "faq")],
     "escalate": [PlanStep("customer_support", "escalate")],
     "payment_issue": [PlanStep("payment", "payment_issue"), PlanStep("customer_support", "faq", 1, False)],

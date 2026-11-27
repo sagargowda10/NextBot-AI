@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import Float, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.ai import KnowledgeChunk
@@ -39,7 +39,9 @@ class PgVectorStore:
         async with self.read_sessions() as s:
             dialect = s.bind.dialect.name
             if dialect == "postgresql":
-                dist = KnowledgeChunk.embedding.cosine_distance(query_vec)  # type: ignore[attr-defined]
+                # pgvector cosine distance. Use the SQL operator directly: the Embedding TypeDecorator (Text impl, so the
+                # same model works on SQLite) hides pgvector's .cosine_distance() comparator.
+                dist = KnowledgeChunk.embedding.op("<=>", return_type=Float)(query_vec)
                 stmt = select(KnowledgeChunk, dist.label("d"))
                 if filters and "category" in filters:
                     cat = filters["category"]

@@ -6,7 +6,9 @@ from typing import Any
 
 from app.agents.base import AgentResult, AgentRun, AgentRunContext, AgentSpec, AgentTask, BaseAgent, fmt_inr
 
-FILTER_KEYS = ("query", "category", "brand", "min_price", "max_price", "size", "colour")
+FILTER_KEYS = ("query", "category", "brand", "min_price", "max_price", "size", "colour", "sort")
+SORT_LABEL = {"price_asc": "lowest price first", "price_desc": "highest price first", "rating": "top rated first", "newest": "newest first"}
+SORT_LEAD = {"price_asc": "The lowest-priced", "price_desc": "The most expensive", "rating": "The top-rated", "newest": "The newest"}
 
 
 def remember_products(ctx: AgentRunContext, products: list[dict[str, Any]], filters: dict[str, Any] | None = None) -> None:
@@ -98,6 +100,13 @@ class ShoppingAgent(BaseAgent):
             + ":\n"
             + "\n".join(lines)
         )
+        if filters.get("sort") in SORT_LABEL:
+            top = items[0]
+            what = filters.get("category", "product").replace("-", " ").rstrip("s") or "product"
+            summary = (
+                f"{SORT_LEAD[filters['sort']]} {what} is {top['name']} at {fmt_inr(top['price'])}.\n"
+                f"Sorted {SORT_LABEL[filters['sort']]}:\n" + "\n".join(lines)
+            )
         if relaxed:
             summary += f"\n(No exact match, so I relaxed the {', '.join(relaxed)} filter.)"
         related = await run.call("recommendation", "related", {"product_id": items[0]["id"], "limit": 3})

@@ -56,12 +56,21 @@ def require_roles(*roles: Role) -> Callable[..., Awaitable[Principal]]:
     return dep
 
 
+def client_ip(request: Request) -> str:
+    """Caller IP. Behind the Next.js same-origin proxy every request comes from the frontend container,
+    so use the first X-Forwarded-For hop the proxy adds (only used to key anonymous rate limits)."""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()[:64]
+    return request.client.host if request.client else "anon"
+
+
 def rate_limit(bucket: str, per_minute_attr: str) -> Callable[..., Awaitable[None]]:
     """Per-user (or per-IP) fixed-window limiter backed by Redis (or memory in demo mode)."""
 
     async def dep(request: Request, creds: HTTPAuthorizationCredentials | None = Depends(bearer)) -> None:
         limit = int(getattr(get_settings(), per_minute_attr))
-        who = (creds.credentials[-16:] if creds else None) or (request.client.host if request.client else "anon")
+        who = (creds.credentials[-16:] if creds else None) or client_ip(request)
         n = await request.app.state.nb.cache.incr_window(f"rl:{bucket}:{who}", 60)
         if n > limit:
             raise RateLimited(f"Too many requests — limit is {limit}/minute")

@@ -64,3 +64,10 @@ def register_consumers(bus: EventBus, state: AppState) -> None:
 
     bus.subscribe("fulfilment", [EventType.PAYMENT_SUCCESSFUL], fulfilment)
     bus.subscribe("notifier", list(TEMPLATE_FOR), notifier)
+
+    s = state.settings
+    if s.n8n_webhook_url:
+        from app.integrations.n8n import N8nForwarder
+
+        state.n8n = N8nForwarder(s.n8n_webhook_url, s.n8n_webhook_token, s.n8n_signing_secret)
+        bus.subscribe("n8n", list(EventType), state.n8n)

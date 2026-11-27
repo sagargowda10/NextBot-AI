@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     kafka_topic_prefix: str = "nextbot"
     outbox_poll_interval_s: float = 1.0
 
+    # n8n workflow automation (optional). When set, every domain event is forwarded to this n8n webhook.
+    n8n_webhook_url: str | None = None
+    n8n_webhook_token: str = "nextbot-n8n-demo-token"  # sent as X-NextBot-Token; checked by the n8n workflow
+    n8n_signing_secret: str = "nextbot-n8n-demo-signing-secret"  # HMAC-SHA256 of the body -> X-NextBot-Signature
+    n8n_editor_url: str = "http://localhost:5678"  # link shown to admins (browser-facing)
+
     # Security
     jwt_secret: str = Field(default="change-me-in-production-use-32+chars", min_length=32)
     jwt_algorithm: str = "HS256"
@@ -56,10 +62,16 @@ class Settings(BaseSettings):
     # AI
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
+    # Any OpenAI-compatible API. Gemini: https://generativelanguage.googleapis.com/v1beta/openai/ (key from AI Studio)
+    openai_base_url: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 384
     agent_max_iterations: int = 6
     agent_timeout_s: float = 15.0
+    # Admin AI Research assistant (OpenAI Responses API + web search). Admin-only; mock answer without a key.
+    openai_research_model: str | None = None  # defaults to openai_model; must be a model that supports web search
+    research_rate_limit_per_minute: int = 10
+    research_daily_limit: int = 200  # per admin, protects the OpenAI bill
 
     # RAG
     rag_chunk_size: int = 600

@@ -102,7 +102,7 @@ def build_nodes(sup: SupervisorAgent) -> dict[str, Any]:
         results = state.get("results", [])
         ctx = state["ctx"]
         reply = None
-        if ctx.llm is not None and not getattr(ctx.llm, "is_mock", True):
+        if ctx.llm is not None and not getattr(ctx.llm, "is_mock", True) and not any(r.data.get("general") for r in results):
             outputs = [{"agent": r.agent, "success": r.success, "summary": r.summary, "data": r.data, "error": r.error} for r in results]
             reply = await ctx.llm.compose(state["message"], state.get("intent", ""), outputs)
         return {"reply": reply or sup.compose(results)}

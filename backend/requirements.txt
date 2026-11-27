@@ -16,7 +16,7 @@ pymongo>=4.10,<5          # includes the native async API (AsyncMongoClient)
 aiokafka>=0.12,<1
 mcp>=2.3,<3               # official Model Context Protocol SDK (v2: MCPServer / Client)
 langgraph>=0.4,<2         # Supervisor state machine (falls back to a built-in runner if absent)
-openai>=1.55,<3           # only used when AI_PROVIDER=openai
+openai>=1.66,<3           # only used with an OPENAI_API_KEY (Responses API + web search needs >=1.66)
 prometheus-client>=0.21,<1
 opentelemetry-sdk>=1.28,<2
 opentelemetry-exporter-otlp-proto-http>=1.28,<2

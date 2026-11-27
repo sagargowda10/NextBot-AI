@@ -22,3 +22,6 @@ class MockLLMProvider:
 
     async def grounded_answer(self, question: str, contexts: list[dict[str, Any]]) -> str | None:
         return None  # RAG pipeline uses extractive answering from the retrieved chunks
+
+    async def general_answer(self, question: str, history: list[dict[str, str]]) -> str | None:
+        return None  # demo mode can't answer open questions; the support agent says so honestly

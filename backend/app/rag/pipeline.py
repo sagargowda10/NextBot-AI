@@ -23,6 +23,9 @@ FALLBACK = (
 )
 
 
+NO_ANSWER = "NO_ANSWER"  # sentinel a real LLM returns when retrieved documents do not contain the answer
+
+
 @dataclass
 class KnowledgeDoc:
     doc_id: str
@@ -108,6 +111,8 @@ class RagPipeline:
         text = None
         if llm is not None and not getattr(llm, "is_mock", True):
             text = await llm.grounded_answer(question, [{"title": h.chunk.title, "content": h.chunk.content} for h in relevant])
+            if text == NO_ANSWER:  # the model read the retrieved documents and they don't answer the question
+                return GroundedAnswer(answer=FALLBACK, sources=[], grounded=False, max_score=round(best, 3))
         if text is None:
             text = extractive_answer(question, relevant)
         return GroundedAnswer(answer=text, sources=sources, grounded=True, max_score=round(best, 3))

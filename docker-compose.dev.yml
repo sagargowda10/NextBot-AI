@@ -8,8 +8,12 @@ services:
     environment:
       ENVIRONMENT: local
       DEMO_MODE: "true"
-      AI_PROVIDER: mock
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
       PAYMENT_PROVIDER: mock
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_RESEARCH_MODEL: ${OPENAI_RESEARCH_MODEL:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       DATABASE_URL: sqlite+aiosqlite:////data/nextbot.db
       EVENT_BUS: memory
       JWT_SECRET: local-dev-only-secret-change-me-0123456789
@@ -19,7 +23,7 @@ services:
     ports: ["8000:8000"]
 
   frontend:
-    build: { context: ./frontend, args: { NEXT_PUBLIC_API_URL: "http://localhost:8000" } }
+    build: { context: ./frontend, args: { BACKEND_INTERNAL_URL: "http://backend:8000" } }
     ports: ["3000:3000"]
     depends_on: [backend]
 

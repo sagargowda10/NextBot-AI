@@ -1,4 +1,4 @@
-# Full infrastructure: PostgreSQL+pgvector, Redis, MongoDB, Kafka (KRaft), backend, frontend, Prometheus, Grafana.
+# Full infrastructure: PostgreSQL+pgvector, Redis, MongoDB, Kafka (KRaft), backend, frontend, Prometheus, Grafana, n8n.
 #   docker compose up --build
 # Optional OpenSearch product index:  docker compose --profile search up --build
 # Lightweight alternative (SQLite, in-memory bus): docker compose -f docker-compose.dev.yml up --build
@@ -21,6 +21,12 @@ x-backend-env: &backend-env
   CORS_ORIGINS: '["http://localhost:3000"]'
   MCP_ALLOWED_HOSTS: '["localhost:*","127.0.0.1:*","backend:*"]'
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_RESEARCH_MODEL: ${OPENAI_RESEARCH_MODEL:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+  N8N_WEBHOOK_URL: http://n8n:5678/webhook/nextbot-events
+  N8N_WEBHOOK_TOKEN: ${N8N_WEBHOOK_TOKEN:-nextbot-n8n-demo-token}
+  N8N_EDITOR_URL: http://localhost:5678
 
 services:
   postgres:
@@ -86,7 +92,7 @@ services:
       kafka-init: { condition: service_completed_successfully }
 
   frontend:
-    build: { context: ./frontend, args: { NEXT_PUBLIC_API_URL: "http://localhost:8000" } }
+    build: { context: ./frontend, args: { BACKEND_INTERNAL_URL: "http://backend:8000" } }
     ports: ["3000:3000"]
     depends_on: [backend]
 
@@ -105,4 +111,33 @@ services:
     ports: ["3001:3000"]
     depends_on: [prometheus]
 
-volumes: { pgdata: {}, redisdata: {}, mongodata: {}, kafkadata: {} }
+  # n8n workflow automation. NextBot forwards every domain event to the "NextBot order events" workflow.
+  n8n-import:  # one-shot: imports + activates the bundled workflow (safe to re-run; same workflow id)
+    image: n8nio/n8n:1.64.0
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        n8n import:workflow --input=/workflows/nextbot-order-events.json &&
+        n8n update:workflow --id=NbOrderEvents001 --active=true || echo "n8n import skipped - import it from the UI"
+    environment: &n8n-env
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_SECURE_COOKIE: "false"
+      GENERIC_TIMEZONE: Asia/Kolkata
+      NEXTBOT_N8N_TOKEN: ${N8N_WEBHOOK_TOKEN:-nextbot-n8n-demo-token}
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+    volumes: [n8ndata:/home/node/.n8n, ./infrastructure/n8n:/workflows:ro]
+
+  n8n:
+    image: n8nio/n8n:1.64.0
+    environment:
+      <<: *n8n-env
+      N8N_HOST: localhost
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://localhost:5678/
+    volumes: [n8ndata:/home/node/.n8n, ./infrastructure/n8n:/workflows:ro]
+    ports: ["5678:5678"]
+    depends_on:
+      n8n-import: { condition: service_completed_successfully }
+
+volumes: { pgdata: {}, redisdata: {}, mongodata: {}, kafkadata: {}, n8ndata: {} }

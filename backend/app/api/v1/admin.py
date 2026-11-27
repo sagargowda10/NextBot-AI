@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,12 +18,14 @@ from app.schemas.auth import UserOut
 from app.schemas.commerce import OrderOut
 from app.schemas.common import Page, PageParams
 from app.schemas.platform import AgentExecutionOut, AgentInfoOut, ApprovalDecision, ApprovalOut, NotificationOut, PluginOut
-from app.security.dependencies import require
+from app.security.dependencies import get_principal, rate_limit, require
 from app.security.permissions import Principal
 from app.services.approval_service import ApprovalService
 from app.services.auth_service import user_out
 from app.services.notification_service import NotificationService
 from app.services.order_service import OrderService
+from app.services.research_service import ResearchService
+from app.services.workflow_service import WorkflowService
 
 router = APIRouter(prefix="/admin", tags=["Administration"])
 staff = Depends(require("admin:read"))
@@ -33,6 +36,60 @@ async def users(p: PageParams = Depends(page_params), session: AsyncSession = De
     rows = (await session.scalars(select(User).order_by(User.id).offset(p.offset).limit(p.size))).all()
     total = int(await session.scalar(select(func.count()).select_from(User)) or 0)
     return Page(items=[user_out(u) for u in rows], total=total, page=p.page, size=p.size)
+
+
+class ChatTurn(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(max_length=4000)
+
+
+class ResearchRequest(BaseModel):
+    question: str = Field(min_length=2, max_length=4000)
+    use_web: bool = True
+    include_store: str = Field("auto", pattern="^(auto|always|never)$")
+    history: list[ChatTurn] = Field(default_factory=list, max_length=12)
+
+
+@router.get("/research/status", dependencies=[Depends(require("research:use"))])
+async def research_status(state: AppState = Depends(get_state)) -> dict[str, Any]:
+    s = state.settings
+    return {
+        "provider": state.research.name if state.research else "mock",
+        "model": state.research.model if state.research else None,
+        "daily_limit": s.research_daily_limit,
+        "per_minute": s.research_rate_limit_per_minute,
+    }
+
+
+@router.post(
+    "/research",
+    dependencies=[Depends(require("research:use")), Depends(rate_limit("research", "research_rate_limit_per_minute"))],
+)
+async def research(
+    body: ResearchRequest,
+    principal: Principal = Depends(get_principal),
+    state: AppState = Depends(get_state),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """Admin-only AI research: ChatGPT with live web search + citations, optionally grounded in store analytics."""
+    history = [t.model_dump() for t in body.history]
+    return await ResearchService(session, state).ask(principal, body.question.strip(), history, body.use_web, body.include_store)
+
+
+@router.get("/workflows/n8n", dependencies=[Depends(require("order:read_all"))])
+async def n8n_status(state: AppState = Depends(get_state), session: AsyncSession = Depends(get_session)) -> dict[str, Any]:
+    """Is the n8n integration configured, and how have deliveries gone since the backend started?"""
+    svc = WorkflowService(session, state.n8n, state.settings.n8n_editor_url)
+    recent = [d.__dict__ for d in list(state.n8n.recent)[:20]] if state.n8n else []
+    return {**svc.n8n_status(), "recent": recent}
+
+
+@router.get("/orders/{order_id}/workflow", dependencies=[Depends(require("order:read_all"))])
+async def order_workflow(
+    order_id: int, state: AppState = Depends(get_state), session: AsyncSession = Depends(get_session)
+) -> dict[str, Any]:
+    """n8n-style execution trace of one order: agents, payment, events, courier, notifications, returns, approvals."""
+    return await WorkflowService(session, state.n8n, state.settings.n8n_editor_url).for_order(order_id)
 
 
 @router.get("/orders", response_model=Page[OrderOut], dependencies=[Depends(require("order:read_all"))])

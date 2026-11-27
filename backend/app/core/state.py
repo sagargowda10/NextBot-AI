@@ -33,4 +33,6 @@ class AppState:
     policy: ApprovalPolicy
     search_index: Any | None = None
     mcp_server: Any | None = None
+    n8n: Any | None = None  # N8nForwarder when n8n_webhook_url is configured
+    research: Any | None = None  # OpenAIResearchClient when an OpenAI key is configured
     background: list[Any] = field(default_factory=list)

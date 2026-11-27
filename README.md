@@ -147,6 +147,32 @@ Notification, Review, Coupon, KnowledgeDocument, ApprovalRequest, AuditLog) plus
 `vector(384)` column, OutboxEvent, ProcessedEvent). MongoDB stores schemaless per-turn agent traces; Redis stores conversation
 working memory, search-result caches and rate-limit counters. ER diagram and constraints: [`docs/database-design.md`](docs/database-design.md).
 
+### n8n workflow automation & order workflow view
+- **Admin -> Workflows (n8n)** draws each order as an n8n-style canvas: Checkout -> Fraud Detection Agent -> Inventory Agent ->
+  Payment Agent -> Event bus -> (Logistics Agent -> Courier -> Return -> Human approval -> Refund) + Email / WhatsApp / n8n.
+  Every node's status (success / failed / needs review / waiting / skipped), time and details come from real records
+  (`orders`, `payments`, `outbox_events`, `shipments`, `notifications`, `return_requests`, `approval_requests`, `refunds`);
+  the execution log lists them in order and the view refreshes live. API: `GET /api/v1/admin/orders/{id}/workflow`.
+- The full stack also runs **n8n** (http://localhost:5678). NextBot forwards every domain event to the bundled
+  *NextBot order events* workflow (token + HMAC-signed, best effort - never blocks orders). See `infrastructure/n8n/README.md`.
+
+### Any-question answers (OpenAI or free Gemini)
+Store questions are answered by the agents from real data (catalogue, orders, knowledge base). Anything else -
+general knowledge, how-to, advice - goes to the configured model (new `general` intent, or when the knowledge base
+has no answer), formatted as bullet points and instructed never to invent store facts. Works with any
+OpenAI-compatible API via `OPENAI_BASE_URL`, e.g. Google Gemini's free tier
+(`https://generativelanguage.googleapis.com/v1beta/openai/`); RAG then uses local embeddings. Demo mode (no key)
+says it can't answer open questions instead of guessing.
+
+### Admin AI Research & voice
+- **Admin -> AI Research** (ADMIN only): paste any question; ChatGPT answers as bullet points using OpenAI's Responses API
+  `web_search` tool, with clickable numbered sources. Questions about the business are grounded in live store analytics
+  (revenue, orders by status, top products, stock). Server-side key, per-minute + daily limits, audit log, web/store
+  content treated as data. Without `OPENAI_API_KEY` it runs in demo mode from store data and says so.
+- **Voice** (free, browser-native Web Speech API) on AI Research and the customer AI Assistant: mic button for speech
+  input (en-IN), "Read replies aloud" toggle and per-reply Listen button. Needs Chrome/Edge and a secure page
+  (localhost or https).
+
 ## 8. API
 Interactive docs at **http://localhost:8000/docs** (OpenAPI 3). Main groups (all under `/api/v1`):
 `auth` (register, login, refresh, me, addresses CRUD + set default) · `products` (list, search, detail, CRUD — paging with `page`/`size`, filters `q`, `category`, `brand`, `min_price`, `max_price`, `variant_size`, `colour`, `in_stock`, `sort`) · `cart` · `orders` (checkout,

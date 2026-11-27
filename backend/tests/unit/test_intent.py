@@ -42,3 +42,19 @@ def test_price_suffixes_and_ordinals():
     assert extract_entities("laptop between 40000 and 1.2 lakh") == {"min_price": 40000, "max_price": 120000, "category": "laptops"}
     assert extract_entities("add the second one")["ordinal"] == 2
     assert extract_entities("this month's sales")["period"] == "this month"
+
+
+@pytest.mark.parametrize(
+    ("text", "intent", "sort"),
+    [
+        ("which is the lowest price product in our store", "product_search", "price_asc"),
+        ("cheapest laptop", "product_search", "price_asc"),
+        ("most expensive shoes", "product_search", "price_desc"),
+        ("show me top rated smartphones", "product_search", "rating"),
+        ("latest arrivals", "product_search", "newest"),
+        ("add the cheapest one to my cart", "add_to_cart", "price_asc"),  # cart action still wins
+    ],
+)
+def test_superlatives_become_sorted_searches(text, intent, sort):
+    r = RuleBasedIntentParser().parse(text)
+    assert r.intent == intent and r.entities.get("sort") == sort

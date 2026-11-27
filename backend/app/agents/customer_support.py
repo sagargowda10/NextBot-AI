@@ -17,14 +17,28 @@ class CustomerSupportAgent(BaseAgent):
     async def handle(self, task: AgentTask, ctx: AgentRunContext, run: AgentRun) -> AgentResult:
         if task.intent == "escalate":
             return await self._escalate(task, ctx, run)
-        return await self._answer(task, run)
+        return await self._answer(task, ctx, run)
 
-    async def _answer(self, task: AgentTask, run: AgentRun) -> AgentResult:
+    async def _general(self, task: AgentTask, ctx: AgentRunContext) -> AgentResult | None:
+        """Open questions go to the configured model (Gemini / OpenAI ...). Store facts never come from here."""
+        llm = ctx.llm
+        if llm is None or getattr(llm, "is_mock", True):
+            return None
+        text = await llm.general_answer(task.message or "", ctx.extras.get("history", []))
+        if not text:
+            return None
+        return AgentResult(success=True, summary=text, data={"general": True, "provider": getattr(llm, "name", "llm")})
+
+    async def _answer(self, task: AgentTask, ctx: AgentRunContext, run: AgentRun) -> AgentResult:
+        if task.intent == "general" and (direct := await self._general(task, ctx)):
+            return direct
         res = await run.call("customer_support", "answer", {"question": task.message or "help"})
         if not res.success:
             return AgentResult(success=False, summary="I couldn't reach our help centre right now.", error=res.error)
         ans = res.data
         if not ans.get("grounded"):
+            if res2 := await self._general(task, ctx):  # not in the knowledge base -> general knowledge (if a model is set)
+                return res2
             return AgentResult(
                 success=True,
                 summary=ans["answer"],

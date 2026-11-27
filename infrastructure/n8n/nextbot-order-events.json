@@ -1,0 +1,298 @@
+{
+  "id": "NbOrderEvents001",
+  "name": "NextBot order events",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "NextBot event",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "5d3f0b4e-8a51-4a43-9d58-6b0c2f1e7a01",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "nextbot-events",
+        "responseMode": "onReceived",
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Verify NextBot token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.headers['x-nextbot-token'] }}",
+              "operation": "equal",
+              "value2": "={{ $env.NEXTBOT_N8N_TOKEN }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Route by event type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        500,
+        200
+      ],
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.body.event_type }}",
+        "rules": {
+          "rules": [
+            {
+              "operation": "equal",
+              "value2": "PaymentFailed",
+              "output": 0
+            },
+            {
+              "operation": "equal",
+              "value2": "ShipmentCreated",
+              "output": 1
+            },
+            {
+              "operation": "equal",
+              "value2": "OrderDelivered",
+              "output": 2
+            }
+          ]
+        },
+        "fallbackOutput": 3
+      }
+    },
+    {
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Payment failed: alert ops",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        780,
+        0
+      ],
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "action",
+              "value": "Alert the ops team; customer gets a retry link"
+            },
+            {
+              "name": "event",
+              "value": "={{ $json.body.event_type }}"
+            },
+            {
+              "name": "order_number",
+              "value": "={{ $json.body.payload.order_number }}"
+            },
+            {
+              "name": "received_at",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "Shipped: update CRM",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        780,
+        160
+      ],
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "action",
+              "value": "Mark order as shipped in the CRM"
+            },
+            {
+              "name": "event",
+              "value": "={{ $json.body.event_type }}"
+            },
+            {
+              "name": "order_number",
+              "value": "={{ $json.body.payload.order_number }}"
+            },
+            {
+              "name": "received_at",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "Delivered: ask for review",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        780,
+        320
+      ],
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "action",
+              "value": "Schedule a review request in 2 days"
+            },
+            {
+              "name": "event",
+              "value": "={{ $json.body.event_type }}"
+            },
+            {
+              "name": "order_number",
+              "value": "={{ $json.body.payload.order_number }}"
+            },
+            {
+              "name": "received_at",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Other events: log",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        780,
+        480
+      ],
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            {
+              "name": "action",
+              "value": "Log for analytics"
+            },
+            {
+              "name": "event",
+              "value": "={{ $json.body.event_type }}"
+            },
+            {
+              "name": "order_number",
+              "value": "={{ $json.body.payload.order_number }}"
+            },
+            {
+              "name": "received_at",
+              "value": "={{ $now.toISO() }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "a1b2c3d4-0008-4000-8000-000000000008",
+      "name": "Reject (bad token)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        500,
+        480
+      ],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "NextBot event": {
+      "main": [
+        [
+          {
+            "node": "Verify NextBot token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify NextBot token": {
+      "main": [
+        [
+          {
+            "node": "Route by event type",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject (bad token)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by event type": {
+      "main": [
+        [
+          {
+            "node": "Payment failed: alert ops",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Shipped: update CRM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delivered: ask for review",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Other events: log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

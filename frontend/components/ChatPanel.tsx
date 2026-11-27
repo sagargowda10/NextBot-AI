@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ProductCard } from "@/components/ProductCard";
 import { Badge, Button, cx } from "@/components/ui";
+import { ListenButton, MicButton, SpeakToggle } from "@/components/VoiceControls";
+import { useSpeech, useSpeechInput } from "@/hooks/useVoice";
 import { api } from "@/services/api";
 import type { ChatResponse, Conversation } from "@/types";
 
@@ -22,6 +24,8 @@ export function ChatPanel({ staff = false }: { staff?: boolean }) {
   const [conversationId, setConversationId] = useState<number | null>(null);
   const [history, setHistory] = useState<Conversation[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
+  const voice = useSpeech("nb_assistant_speak");
+  const mic = useSpeechInput((text) => { void send(text); });
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
   useEffect(() => { api<Conversation[]>("/api/v1/ai/conversations").then(setHistory).catch(() => undefined); }, [conversationId]);
@@ -42,6 +46,7 @@ export function ChatPanel({ staff = false }: { staff?: boolean }) {
       const res = await api<ChatResponse>("/api/v1/ai/chat", { method: "POST", json: { message, conversation_id: conversationId } });
       setConversationId(res.conversation_id);
       setMessages((m) => [...m, { role: "assistant", content: res.reply, res }]);
+      if (voice.auto) voice.speak(res.reply);
     } catch (e) {
       setMessages((m) => [...m, { role: "assistant", content: e instanceof Error ? e.message : "Something went wrong.", error: true }]);
     } finally {
@@ -70,7 +75,10 @@ export function ChatPanel({ staff = false }: { staff?: boolean }) {
             <p className="font-semibold">NextBot Assistant</p>
             <p className="text-xs text-ink-500">Supervisor + 11 specialised agents</p>
           </div>
-          {last && <Badge tone={last.demo_mode ? "amber" : "green"}>{last.demo_mode ? `Demo mode · ${last.ai_provider} AI` : `Live · ${last.ai_provider}`}</Badge>}
+          <div className="flex items-center gap-3">
+            <SpeakToggle {...voice} />
+            {last && <Badge tone={last.demo_mode ? "amber" : "green"}>{last.demo_mode ? `Demo mode · ${last.ai_provider} AI` : `Live · ${last.ai_provider}`}</Badge>}
+          </div>
         </div>
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5" aria-live="polite">
           {messages.length === 0 && (
@@ -111,6 +119,7 @@ export function ChatPanel({ staff = false }: { staff?: boolean }) {
                     </ul>
                   </details>
                 )}
+                {m.role === "assistant" && !m.error && <ListenButton supported={voice.supported} onClick={() => voice.speak(m.content)} />}
                 {m.res?.requires_approval && <Badge tone="amber">Awaiting human approval</Badge>}
                 {m.res && m.res.suggestions.length > 0 && i === messages.length - 1 && (
                   <div className="flex flex-wrap gap-2">
@@ -123,8 +132,14 @@ export function ChatPanel({ staff = false }: { staff?: boolean }) {
           {busy && <div className="flex items-center gap-2 text-sm text-ink-500"><span className="h-2 w-2 animate-bounce rounded-full bg-brand-500" />Agents are working…</div>}
           <div ref={endRef} />
         </div>
+        {(mic.listening || mic.error) && (
+          <p className={cx("border-t border-ink-100 px-4 pt-2 text-xs", mic.error ? "text-rose-600" : "text-ink-500")}>
+            {mic.error ?? (mic.interim ? `🎙 ${mic.interim}` : "🎙 Listening… speak now")}
+          </p>
+        )}
         <form onSubmit={(e) => { e.preventDefault(); void send(input); }} className="flex gap-2 border-t border-ink-100 p-4">
-          <input value={input} onChange={(e) => setInput(e.target.value)} maxLength={2000} placeholder="Ask NextBot anything about products, orders, returns…"
+          <MicButton supported={mic.supported} listening={mic.listening} onClick={mic.toggle} disabled={busy} />
+          <input value={input} onChange={(e) => setInput(e.target.value)} maxLength={2000} placeholder={mic.supported ? "Type or tap the mic to speak…" : "Ask NextBot anything about products, orders, returns…"}
                  aria-label="Message" className="flex-1 rounded-lg border border-ink-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500" />
           <Button type="submit" disabled={busy || !input.trim()}>Send</Button>
         </form>

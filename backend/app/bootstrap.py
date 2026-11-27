@@ -23,6 +23,7 @@ from app.events.handlers import register_consumers
 from app.events.outbox import DbIdempotencyStore, OutboxRelay
 from app.integrations.cache import build_cache
 from app.integrations.llm.openai_provider import build_llm
+from app.integrations.llm.research import build_research_client
 from app.integrations.mongo import build_trace_store
 from app.integrations.payments import MockGateway, build_gateway
 from app.integrations.search import OpenSearchProductIndex
@@ -35,7 +36,7 @@ from app.models.platform import Plugin, PluginConfiguration
 from app.orchestration.orchestrator import DbPluginExecutionSink
 from app.plugins.manager import PluginManager
 from app.plugins.registry import builtin_plugins, configs_from_settings, entrypoint_plugins
-from app.rag.embeddings import HashingEmbedder, OpenAIEmbedder
+from app.rag.embeddings import FallbackEmbedder, HashingEmbedder, OpenAIEmbedder
 from app.rag.pgvector_store import PgVectorStore
 from app.rag.pipeline import KnowledgeDoc, RagPipeline
 from app.rag.vector_store import StoredChunk
@@ -47,8 +48,8 @@ log = get_logger("bootstrap")
 
 def build_state(s: Settings) -> AppState:
     embedder: Any = (
-        OpenAIEmbedder(s.openai_api_key, s.openai_embedding_model, s.embedding_dim)
-        if s.ai_provider == "openai" and s.openai_api_key
+        FallbackEmbedder(OpenAIEmbedder(s.openai_api_key, s.openai_embedding_model, s.embedding_dim), HashingEmbedder(s.embedding_dim))
+        if s.ai_provider == "openai" and s.openai_api_key and not s.openai_base_url
         else HashingEmbedder(s.embedding_dim)
     )
     rag = RagPipeline(
@@ -82,7 +83,7 @@ def build_state(s: Settings) -> AppState:
         plugins=plugins,
         agents=AgentRegistry(),
         metrics=AgentMetrics(),
-        llm=build_llm(s.ai_provider, s.openai_api_key, s.openai_model),
+        llm=build_llm(s.ai_provider, s.openai_api_key, s.openai_model, s.openai_base_url),
         rag=rag,
         bus=bus,
         cache=build_cache(s.redis_url),
@@ -96,6 +97,7 @@ def build_state(s: Settings) -> AppState:
             s.fraud_review_score,
         ),
         search_index=OpenSearchProductIndex(s.opensearch_url) if s.search_backend == "opensearch" and s.opensearch_url else None,
+        research=build_research_client(s.openai_api_key, s.openai_research_model or s.openai_model, s.openai_base_url),
     )
 
 
@@ -130,8 +132,12 @@ async def start(state: AppState) -> None:
             else:
                 plugin_row.version, plugin_row.status, plugin_row.description = p.version, reg.status.value, p.description
 
-    # 2. RAG index: knowledge documents + product descriptions (for semantic product search)
-    await index_knowledge(state)
+    # 2. RAG index: knowledge documents + product descriptions (for semantic product search).
+    #    A provider problem (no credit, bad key, network) must never stop the whole platform from starting.
+    try:
+        await index_knowledge(state)
+    except Exception as exc:
+        log.error("knowledge_index_failed_starting_without_it", extra={"error": type(exc).__name__})
 
     # 3. MCP server (in-process; also mounted at /mcp) + wire the MCP Integration plugin to it
     gateway = PluginToolGateway(state.plugins, container_factory(state), {"agent_metrics": state.metrics})

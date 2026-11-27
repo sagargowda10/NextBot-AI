@@ -74,6 +74,42 @@ class OpenAIEmbedder:
         return [d.embedding for d in resp.data]
 
 
+class FallbackEmbedder:
+    """OpenAI embeddings with a safe fallback to the local HashingEmbedder.
+
+    If OpenAI fails *before it has ever succeeded* (no credit, revoked key, offline), switch permanently to the
+    local embedder so the app still starts and indexing + queries stay in the same vector space. Once OpenAI vectors
+    are stored, a later failure is raised instead: mixing vector spaces would silently return wrong documents.
+    """
+
+    def __init__(self, primary: Embedder, fallback: Embedder) -> None:
+        self.primary, self.fallback = primary, fallback
+        self.dim = primary.dim
+        self.using_fallback = False
+        self.primary_ok = False
+        self.fallback_reason: str | None = None
+
+    @property
+    def name(self) -> str:
+        return self.fallback.name if self.using_fallback else self.primary.name
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        if self.using_fallback:
+            return await self.fallback.embed(texts)
+        try:
+            vecs = await self.primary.embed(texts)
+        except Exception as exc:
+            if self.primary_ok:
+                raise
+            self.using_fallback, self.fallback_reason = True, type(exc).__name__
+            from app.core.logging import get_logger
+
+            get_logger("rag").warning("openai_embeddings_unavailable_using_local", extra={"error": self.fallback_reason})
+            return await self.fallback.embed(texts)
+        self.primary_ok = True
+        return vecs
+
+
 def cosine(a: list[float], b: list[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a)) or 1.0
