@@ -40,7 +40,7 @@ class MongoTraceStore:
     def __init__(self, url: str, db: str) -> None:
         from pymongo import AsyncMongoClient
 
-        self.client: Any = AsyncMongoClient(url, serverSelectionTimeoutMS=2000)
+        self.client: Any = AsyncMongoClient(url, serverSelectionTimeoutMS=5000, appname="nextbot-backend")  # 5 s: Atlas is remote
         self.col = self.client[db]["agent_traces"]
 
     async def save_turn(self, doc: dict[str, Any]) -> None:

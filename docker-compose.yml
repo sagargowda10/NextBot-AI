@@ -13,7 +13,8 @@ x-backend-env: &backend-env
   EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
   DATABASE_URL: postgresql+asyncpg://nextbot:nextbot@postgres:5432/nextbot
   REDIS_URL: redis://redis:6379/0
-  MONGO_URL: mongodb://mongo:27017
+  MONGO_URL: ${MONGO_URL:-mongodb://mongo:27017}   # set MONGO_URL in .env to use MongoDB Atlas
+  MONGO_DB: ${MONGO_DB:-nextbot}
   EVENT_BUS: kafka
   KAFKA_BOOTSTRAP_SERVERS: kafka:9092
   JWT_SECRET: ${JWT_SECRET:-local-dev-only-secret-change-me-0123456789}
