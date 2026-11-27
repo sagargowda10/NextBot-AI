@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import math
 import re
-from typing import Protocol
+from typing import Any, Protocol
 
 _STOP = frozenset(
     "a an and are as at be by can do does for from have how i in is it me my of on or our "
@@ -66,7 +66,7 @@ class OpenAIEmbedder:
     def __init__(self, api_key: str, model: str, dim: int = 384) -> None:
         from openai import AsyncOpenAI
 
-        self.client = AsyncOpenAI(api_key=api_key, timeout=20)
+        self.client: Any = AsyncOpenAI(api_key=api_key, timeout=20)
         self.model, self.dim = model, dim
 
     async def embed(self, texts: list[str]) -> list[list[float]]:

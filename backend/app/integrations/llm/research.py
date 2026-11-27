@@ -72,7 +72,9 @@ class OpenAIResearchClient:
             client = AsyncOpenAI(api_key=api_key, base_url=base_url or None, timeout=60, max_retries=1)
         from app.integrations.llm.openai_provider import provider_name
 
-        self.client, self.model, self.base_url = client, model, base_url
+        # Any: the SDK's TypedDict overloads change between releases; we pass plain dicts it accepts at runtime.
+        self.client: Any = client
+        self.model, self.base_url = model, base_url
         self.name = provider_name(base_url)
 
     async def ask(self, question: str, history: list[dict[str, str]], store_data: str | None, use_web: bool) -> ResearchResult:

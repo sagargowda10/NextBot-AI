@@ -90,7 +90,7 @@ class OpenAIProvider:
         from openai import AsyncOpenAI
 
         # Short limits, no retries: a slow/unreachable provider must never freeze the chat - we fall back to rules.
-        self.client = AsyncOpenAI(api_key=api_key, base_url=base_url or None, timeout=15, max_retries=0)
+        self.client: Any = AsyncOpenAI(api_key=api_key, base_url=base_url or None, timeout=15, max_retries=0)
         self.name = provider_name(base_url)
         self._down_until = 0.0  # cool-down after a timeout / connection error
         self.model = model
