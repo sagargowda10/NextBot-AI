@@ -1,75 +1,187 @@
-name: CI
+
+name: NextBot-AI CI/CD
 
 on:
-  push: { branches: [main] }
+  push:
+    branches: [main]
   pull_request:
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+
+  # ---------------- BACKEND ----------------
   backend:
+    name: Backend - Lint, Type Check & Tests
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: backend } }
+
+    defaults:
+      run:
+        working-directory: backend
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12", cache: pip, cache-dependency-path: backend/requirements*.txt }
-      - run: pip install -r requirements-dev.txt
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
       - name: Lint
         run: ruff check app tests
-      - name: Type-check
+
+      - name: Type Check
         run: mypy app
-      - name: Unit tests (agents, plugins, RAG, MCP, events, domain)
+
+      - name: Unit Tests
         run: pytest tests/unit -q
-      - name: API integration tests (FastAPI + SQLAlchemy + SQLite) and PostgreSQL concurrency (Testcontainers)
+
+      - name: Integration Tests
         run: pytest tests/integration -q -rs
-      - name: Migrations apply cleanly
-        env: { DATABASE_URL: "sqlite+aiosqlite:///./ci.db" }
+
+      - name: Database Migrations
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./ci.db
         run: alembic upgrade head
 
-  frontend:
-    runs-on: ubuntu-latest
-    defaults: { run: { working-directory: frontend } }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - run: npm install
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm run build
 
+  # ---------------- FRONTEND ----------------
+  frontend:
+    name: Frontend - Build & Validation
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type Check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build Frontend
+        run: npm run build
+
+
+  # ---------------- END-TO-END TESTING ----------------
   e2e:
+    name: End-to-End Tests
     needs: [backend, frontend]
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - run: docker compose -f docker-compose.dev.yml up -d --build
-      - run: |
-          for i in $(seq 1 60); do curl -sf http://localhost:8000/health/ready && break; sleep 3; done
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - working-directory: frontend
-        run: npm install && npx playwright install --with-deps chromium && E2E_NO_SERVER=1 npx playwright test
-      - if: always()
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Start Docker Services
+        run: docker compose -f docker-compose.dev.yml up -d --build
+
+      - name: Wait for Backend Health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/health/ready; then
+              echo "Backend is ready"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Backend failed to become ready"
+          docker compose -f docker-compose.dev.yml logs
+          exit 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E Tests
+        working-directory: frontend
+        env:
+          E2E_NO_SERVER: "1"
+        run: npx playwright test
+
+      - name: Docker Logs
+        if: always()
         run: docker compose -f docker-compose.dev.yml logs backend | tail -200
 
+      - name: Stop Docker Services
+        if: always()
+        run: docker compose -f docker-compose.dev.yml down -v
+
+
+  # ---------------- DOCKER IMAGE PUBLISHING ----------------
   images:
-    if: github.ref == 'refs/heads/main'
-    needs: [backend, frontend]
+    name: Build & Push Docker Images
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, frontend, e2e]
     runs-on: ubuntu-latest
-    permissions: { contents: read, packages: write }
+
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
-      - uses: docker/build-push-action@v6
-        with: { context: backend, push: true, tags: "ghcr.io/${{ github.repository_owner }}/nextbot-backend:${{ github.sha }}" }
-      - uses: docker/build-push-action@v6
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Push Backend Image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/nextbot-backend:${{ github.sha }}
+
+      - name: Build & Push Frontend Image
+        uses: docker/build-push-action@v6
         with:
           context: frontend
           push: true
-          build-args: NEXT_PUBLIC_API_URL=${{ vars.API_URL || 'https://api.example.com' }}
-          tags: "ghcr.io/${{ github.repository_owner }}/nextbot-frontend:${{ github.sha }}"
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.API_URL || 'https://api.example.com' }}
+          tags: ghcr.io/${{ github.repository_owner }}/nextbot-frontend:${{ github.sha }}
